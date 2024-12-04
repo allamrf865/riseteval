@@ -1,4 +1,3 @@
-# Import necessary libraries
 import streamlit as st
 import pandas as pd
 from sklearn.ensemble import RandomForestClassifier
@@ -71,6 +70,37 @@ uploaded_files = st.sidebar.file_uploader(
     help="You can upload multiple Excel files (up to 10)."
 )
 
+# Function to calculate and display metrics
+def evaluate_metrics(y_true, y_pred):
+    # Confusion Matrix
+    tn, fp, fn, tp = confusion_matrix(y_true, y_pred).ravel()
+    
+    # Calculate metrics
+    sensitivitas = tp / (tp + fn) if (tp + fn) != 0 else 0
+    spesifisitas = tn / (tn + fp) if (tn + fp) != 0 else 0
+    nilai_duga_positif = tp / (tp + fp) if (tp + fp) != 0 else 0
+    nilai_duga_negatif = tn / (tn + fn) if (tn + fn) != 0 else 0
+    prevalensi = (tp + fn) / len(y_true) if len(y_true) > 0 else 0
+    rasio_kemungkinan_positif = sensitivitas / (1 - spesifisitas) if (1 - spesifisitas) != 0 else np.inf
+    rasio_kemungkinan_negatif = (1 - sensitivitas) / spesifisitas if spesifisitas != 0 else np.inf
+    akurasi = (tp + tn) / len(y_true) if len(y_true) > 0 else 0
+    
+    # ROC and AUC
+    fpr, tpr, _ = roc_curve(y_true, y_pred)
+    auc_value = auc(fpr, tpr)
+    
+    return {
+        "Sensitivitas (Recall)": sensitivitas,
+        "Spesifisitas": spesifisitas,
+        "Nilai Duga Positif": nilai_duga_positif,
+        "Nilai Duga Negatif": nilai_duga_negatif,
+        "Prevalensi": prevalensi,
+        "Rasio Kemungkinan Positif": rasio_kemungkinan_positif,
+        "Rasio Kemungkinan Negatif": rasio_kemungkinan_negatif,
+        "Akurasi": akurasi,
+        "AUC": auc_value
+    }, fpr, tpr, auc_value
+
 # Main layout for datasets
 if uploaded_files:
     st.markdown("### 📊 Datasets Overview")
@@ -121,23 +151,26 @@ if uploaded_files:
                         y_pred_prob = model.predict_proba(X_test)[:, 1]
 
                         # Calculate metrics
-                        cm = confusion_matrix(y_test, y_pred)
-                        auc = roc_auc_score(y_test, y_pred_prob)
-                        sensitivity = cm[1, 1] / (cm[1, 1] + cm[1, 0])
-                        specificity = cm[0, 0] / (cm[0, 0] + cm[0, 1])
-                        accuracy = accuracy_score(y_test, y_pred)
+                        metrics, fpr, tpr, auc_value = evaluate_metrics(y_test, y_pred)
 
                         # Display metrics
                         st.markdown("#### Model Metrics")
                         col1, col2, col3 = st.columns(3)
-                        col1.metric("AUC", f"{auc:.2f}")
-                        col2.metric("Sensitivity", f"{sensitivity:.2f}")
-                        col3.metric("Specificity", f"{specificity:.2f}")
+                        col1.metric("AUC", f"{auc_value:.2f}")
+                        col2.metric("Sensitivity", f"{metrics['Sensitivitas (Recall)']:.2f}")
+                        col3.metric("Specificity", f"{metrics['Spesifisitas']:.2f}")
                         col4, col5 = st.columns(2)
-                        col4.metric("Accuracy", f"{accuracy:.2f}")
+                        col4.metric("Accuracy", f"{metrics['Akurasi']:.2f}")
+
+                        # Display all other metrics
+                        st.markdown("#### Additional Metrics")
+                        for metric, value in metrics.items():
+                            if metric not in ["AUC", "Sensitivity", "Specificity", "Accuracy"]:
+                                st.metric(metric, f"{value:.2f}")
 
                         # Confusion Matrix
                         st.markdown("#### Confusion Matrix")
+                        cm = confusion_matrix(y_test, y_pred)
                         fig, ax = plt.subplots()
                         sns.heatmap(cm, annot=True, fmt='d', cmap='Blues', xticklabels=["Negative", "Positive"], yticklabels=["Negative", "Positive"])
                         plt.title("Confusion Matrix")
@@ -147,9 +180,8 @@ if uploaded_files:
 
                         # ROC Curve
                         st.markdown("#### ROC Curve")
-                        fpr, tpr, _ = roc_curve(y_test, y_pred_prob)
                         fig, ax = plt.subplots()
-                        plt.plot(fpr, tpr, label=f"AUC = {auc:.2f}")
+                        plt.plot(fpr, tpr, label=f"AUC = {auc_value:.2f}")
                         plt.plot([0, 1], [0, 1], 'r--', label="Random Guess")
                         plt.xlabel("False Positive Rate")
                         plt.ylabel("True Positive Rate")
